@@ -1,6 +1,9 @@
 "use server";
 
+import { createAuthSession } from "@/lib/auth";
+import connectToDb from "@/lib/db";
 import { z } from "zod";
+import { hash } from "bcrypt";
 
 const initialState = {
   success: false,
@@ -36,6 +39,34 @@ export const signup = async (prevState: RegisterState, formData: FormData) => {
         message: issue.message,
       })),
     };
+  }
+
+  const client = await connectToDb();
+
+  try {
+    await client.connect();
+    const db = client.db("brickkeeper");
+    const users = db.collection("users");
+    const hashedPassword = await hash(password as string, 10);
+    const user = await users.findOne({ email });
+
+    if (user) {
+      console.log("user exists");
+      return;
+    }
+
+    const res = await users.insertOne({
+      name,
+      email,
+      password: hashedPassword,
+    });
+
+    await createAuthSession(res.insertedId.toString());
+  } catch (error) {
+    console.log(error);
+    return { success: false };
+  } finally {
+    await client.close();
   }
 
   return { success: true, errors: [] };
